@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "author": "Anonymous maker",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-arduino-mega", "id": "mega", "top": 0.6, "left": -3.6, "attrs": {} },
+    { "type": "wokwi-slide-switch", "id": "SwellFlute4", "top": -130, "left": -64.1, "attrs": {} },
+    {
+      "type": "wokwi-slide-switch",
+      "id": "SwellStoppedDiapason8",
+      "top": -130,
+      "left": -102.5,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r1",
+      "top": -15.25,
+      "left": 124.8,
+      "attrs": { "value": "10000" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r2",
+      "top": -34.45,
+      "left": 124.8,
+      "attrs": { "value": "10000" }
+    },
+    { "type": "wokwi-slide-switch", "id": "sw1", "top": -143.28, "left": 396.22, "attrs": {} },
+    {
+      "type": "wokwi-resistor",
+      "id": "r3",
+      "top": -93.6,
+      "left": 358.21,
+      "attrs": { "value": "1000" }
+    }
+  ],
+  "connections": [
+    [ "SwellFlute4:3", "mega:4", "green", [ "v48", "h259.4", "v57.6" ] ],
+    [ "SwellStoppedDiapason8:3", "mega:6", "green", [ "v28.8", "h278.6", "v76.8" ] ],
+    [ "SwellFlute4:2", "mega:VIN", "brown", [ "h0.1", "v307.2", "h237.9" ] ],
+    [ "SwellStoppedDiapason8:2", "mega:VIN", "brown", [ "h0.1", "v297.6", "h276.3" ] ],
+    [ "mega:GND.1", "r2:1", "black", [ "h-0.2", "v-38.4" ] ],
+    [ "mega:GND.1", "r1:1", "black", [ "h-0.2", "v-19.2" ] ],
+    [ "r1:2", "mega:6", "green", [ "h18", "v19.2" ] ],
+    [ "r2:2", "mega:4", "green", [ "h37.2", "v38.4", "h-5.4" ] ],
+    [ "mega:20", "sw1:2", "green", [ "v0" ] ],
+    [ "sw1:3", "r3:2", "green", [ "v0" ] ],
+    [ "r3:1", "mega:GND.1", "black", [ "h-242.25", "v97.55" ] ]
+  ],
+  "dependencies": {}
+}
