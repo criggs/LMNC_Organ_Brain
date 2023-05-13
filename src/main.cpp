@@ -98,7 +98,7 @@ MIDI_CREATE_DEFAULT_INSTANCE();
 
 /**
  *
- * Coupter Stops
+ * Coupler Stops
  *
  * From: https://www.ibiblio.org/pipeorgan/Pages/Console.html
  *
@@ -434,9 +434,11 @@ void updateStopStates()
   digitalReadStop(GreatHorn8_9);
   digitalReadStop(GreatClarion4_8);
 
-  analogReadStop(PedalBassFlute8_20); // Pin D20/A6 is analog input only
-  digitalReadStop(PedalBourdon16_19);
+  // Pin D20/A6 is analog input only
+  analogReadStop(PedalBassFlute8_20); // Principal and String
+  digitalReadStop(PedalBourdon16_19); // Flute
 
+  // Coupler Stops
   digitalReadStop(SwellToGreat_18);
   digitalReadStop(SwellToPedal_17);
   digitalReadStop(GreatToPedal_16);
@@ -463,12 +465,12 @@ void pullOutAllTheStops()
   StopSwitchStates[GreatHorn8_9] = true;
   StopSwitchStates[GreatClarion4_8] = true;
 
-  StopSwitchStates[PedalBassFlute8_20] = true;
-  StopSwitchStates[PedalBourdon16_19] = true;
+  StopSwitchStates[PedalBassFlute8_20] = true; // Principal and String
+  StopSwitchStates[PedalBourdon16_19] = true; // Flute
 
   StopSwitchStates[SwellToGreat_18] = true;
-  // StopSwitchStates[SwellToPedal_17] = true;
-  // StopSwitchStates[GreatToPedal_16] = true;
+  StopSwitchStates[SwellToPedal_17] = true;
+  StopSwitchStates[GreatToPedal_16] = true;
 }
 
 /**
