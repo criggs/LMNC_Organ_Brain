@@ -81,7 +81,7 @@ MIDI_CREATE_DEFAULT_INSTANCE();
 
 // Uncomment this line to force all settings for local testing,
 // such as 115200 serial baud rate and force-enabling all stop switches
-// #define LOCAL_TESTING_MODE 1
+//#define LOCAL_TESTING_MODE 1
 
 /**
  * ON/OFF constants help with readability
@@ -186,7 +186,7 @@ MIDI_CREATE_DEFAULT_INSTANCE();
  * Execution flags to handle different program states
  */
 boolean panicking = false;        // Let functions know if we're in panic mode
-boolean handelerExecuted = false; // Keeps track of whether a note was handled or not
+boolean handlerExecuted = false; // Keeps track of whether a note was handled or not
 
 /**
  * State Arrays for Input and Output channels
@@ -410,7 +410,7 @@ void panic()
 {
 
   panicking = true;
-  handelerExecuted = false;
+  handlerExecuted = false;
 
   // Send MIDI OFF messages to every pipe channel for every note
   for (int pitch = 0; pitch < NOTES_SIZE; pitch++)
@@ -473,7 +473,7 @@ void handleMidiNote(byte channel, byte pitch, byte velocity, boolean value)
     // Ignore the note
     return;
   }
-  handelerExecuted = true;
+  handlerExecuted = true;
   switch (channel)
   {
   case SwellChannel:
@@ -501,9 +501,9 @@ void readMidi()
     // Read incoming messages until there are no more messages to read. This is
     // to prevent potential buffering issues if there are too many incoming messages
     // at once.
-    handelerExecuted = false;
+    handlerExecuted = false;
     MIDI.read();
-  } while (!panicking && handelerExecuted);
+  } while (!panicking && handlerExecuted);
 }
 
 /**
