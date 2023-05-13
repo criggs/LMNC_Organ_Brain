@@ -1,22 +1,73 @@
-// LMNC Organ Brain - Speedy Edition (Gotta Go Fast)
-
 /**
- * The general approach of this solution is the following:
+ * LMNC Organ Brain - Speedy Edition (Gotta Go Fast Edition)
  *
- * Read and track all of the input keyboard note states, we want the actual physical keys being
- * pressed here, not the transposed/combined ouput
+ * Author: Chris Riggs
+ * Credits (in no particular order): Niwreg, Lenwë Sáralondë, MarCNeT, Caustic, LMNC, MrHammond,
+ *                                   Peter Buxton, porl, EK#1979, LMNC Discord and Patreon
+ * Github Gist: https://gist.github.com/criggs/188ae7e3e8d23a65499f12d167bec74d
  *
- * Read and track the stop switch states
+ * =================================================================================================
+ * Approach tl;dr
+ * -------------------------------------------------------------------------------------------------
+ * To start, we read all incoming MIDI messages and maintain the state of each keyboard so we know
+ * which keys are being pressed any given time. We also read and save the state of every stopswitch.
+ * Now that we have the input state, we can calculate what notes to output on each pipe rank.
  *
- * Caclculate the output notes for each combine the physical keys being pressed with the stop
- * switches that are enabled to determine what output notes and channels should be active
+ * We use some mapping logic to calculate every output note that should be on or off for every pipe
+ * rank based on the inputs and save the results. By comparing the new results with the previous
+ * results, we can see which notes changed from On-to-Off or Off-to-On and send a MIDI On/Off
+ * message to the corrsponding pipe rank.
  *
- * When setting the output notes, only send a MIDI On/Off message if theoutput is different that
- * what it was before
+ * Because of the limited serial buffer on the Arduino Nano (64 bytes or 32 MIDI note messages),
+ * we must read and clear the input buffer as much as possible to not miss any messages, which would
+ * result in stuck notes. An output ring buffer is used to send the output notes in batches to
+ * prevent overwhelming the serial output and dropping MIDI note messages.
  *
- * This should allow for the same notes to be pressed and released from multiple keyboards without
- * prematurely stopping a note. It will also allow for the output/pipe notes to respond correctly to
+ * =================================================================================================
+ * Longer Description of approach
+ * -------------------------------------------------------------------------------------------------
+ *
+ * Read all of the incoming MIDI not messages for each keyboard and store them in note bitmaps
+ * (arrays of 16 bytes which is 128 bits). We want the actual physical keys being pressed here, not
+ * the transposed/combined ouput. We only change these bitmaps when we're handling MIDI messages
+ * from the Serial buffer, and it will reflect every key's on/off state.
+ *
+ * Read and save the stop switch states into a state array. We only need to do this once per loop
+ * because the stops aren't being read through a buffer and they won't be changing nearly as
+ * frequently as the keyboard keys.
+ *
+ * Calculate the output note state for each rank of pipes.  To do this we combine the physical keys
+ * being pressed with the stop switch states to determine which notes are supposed to be active. We
+ * start with an empty bitmap of output notes for each rank. We go through all of the switch
+ * combinations with each note being pressed on a keyboard and turn it on if it's supposed to be on.
+ * After going through all keyboard and switch combinations, we have built the expected output state
+ * for each of the ranks.
+ *
+ * Now that we know what notes are supposed to be on for each of the 4 ranks (ouput notes), we can
+ * compare it with the previous state was. If the previous state is the same as the new state, we
+ * don't need to send a new MIDI message for this note. If the note is now On, we can sent a MIDI On
+ * and if the note is now off we can send a MIDI Off.
+ *
+ * This will allow for the same notes to be pressed and released from multiple keyboards without
+ * prematurely stopping a note. It will also allow for the rank ouput notes to respond correctly to
  * changes in the stop switches while keys are being held down across the various keyboard inputs.
+ *
+ * While doing all of this, we need to read the MIDI input buffer every opportunity we get. The
+ * Arduino Nano only has 64 bytes for it's serial input buffer, which can only hold 32 incoming MIDI
+ * messages at a time. If we don't take them out of the buffer quickly enough, new MIDI messages
+ * will start to overwrite the old ones. This is one way stuck notes can happen:
+ *  - MIDI ON comes in
+ *  - Other messages overwhelm the buffer because we didn't clear them out fast enough
+ *  - The MIDI OFF note gets missed
+ *
+ * For serial output, however, we do have control over the rate we send output notes. The Arduino
+ * Nano also has only 64 bytes of serial output buffer. Since we will almost always have more notes
+ * going out than coming in, we could easily find ourselves in a situation where we're writing notes
+ * too quickly and new output notes will start overwriting each other. To prevent this, I implemented
+ * a ring buffer which can queue up notes in memory before we send batches of them to the serial
+ * buffer. This lets us limit the output so it doesn't overwhelm the serial buffer and we don't drop
+ * any notes. I also added a check so if the ring buffer ever gets full and we try to write to it,
+ * instead of overwriting another note it will cause an automatic panic.
  *
  */
 
@@ -328,7 +379,7 @@ void checkForPanic()
  * Panics all of the pipe channels and waits for PANIC_WAIT_TIME_SECONDS before
  * accepting accepting input again.
  *
- * Druing the panic state, while waiting, the input buffers will be consumed
+ * During the panic state, while waiting, the input buffers will be consumed
  * but no output will be written.
  *
  * This will be automatically called if the Output Ring Buffer is overrun
@@ -439,7 +490,7 @@ void handleMidiNote(byte channel, byte pitch, byte velocity, boolean value)
 
 /**
  * Reads all incoming midi messages. This will  block until no MIDI.read() calls
- * result in a handler being executed. This should be called AGRESSIVELY for best
+ * result in a handler being executed. This should be called AGGRESSIVELY for best
  * performance. The handlers only record what notes were pressed, the application
  * loop will make calculate what needs to be done with the state of the notes.
  */
@@ -551,14 +602,6 @@ boolean setNoteState(byte noteBitmap[], byte pitch, boolean val)
   {
     return false;
   }
-}
-
-/**
- * Read the specific analog pin into a StopSwitchState
- */
-void analogReadSwitch(byte pin)
-{
-  StopSwitchStates[pin] = analogRead(pin) > 200;
 }
 
 /**
@@ -967,4 +1010,12 @@ boolean popAndSendMidi()
 void digitalReadSwitch(byte pin)
 {
   StopSwitchStates[pin] = digitalRead(pin) == HIGH;
+}
+
+/**
+ * Read the specific analog pin into a StopSwitchState
+ */
+void analogReadSwitch(byte pin)
+{
+  StopSwitchStates[pin] = analogRead(pin) > 200;
 }
