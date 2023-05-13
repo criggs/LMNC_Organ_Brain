@@ -1,422 +1,521 @@
-// Look Mum No Organ
-//
-// Approach for controlling the organ using status arrays to deal with keyboards and stops.
-// The MIDI channels have been indexed from 0 to 15 for convenience with the code.
-//
-// This code can be tested using an online emulator with all the "Serial." calls uncommented and all "MIDI." calls commented.
-// Test cases should be added at the end of the setup() function.
-// Live demo on https://wokwi.com/projects/363743573533928449 with working SwellStoppedDiapason8 and SwellFlute4 stops.
-//
-// Improvement suggestions for the design:
-// - The organ pipes MIDI channels could be 1 to 4 as well if the MIDI IN from the keyboards and MIDI OUT events to the organ events don't travel on the same cable.
-// - The stops could be controlled via MIDI using CCs, via the related keyboard's channel. This would allow to record them as well in a MIDI file and even play them back using the built in solenoids.
-// - The logic in the setBufferPipeForKey function could be implemented using the presets board wired to the Arduino. There is no advantage of doing this except actually using a part of the original hardware.
+/*
+ * Look Mum No Computer – Organ console brain
+ */
 
 #include <MIDI.h>
 
-MIDI_CREATE_DEFAULT_INSTANCE();
+////////////////////////////// CONFIGURATION //////////////////////////////
 
-// MIDI channels are indexed from 0 to 15 instead of 1 to 16
+// MIDI channels are indexed from 0 to 15.
+// MIDI channels for pipes and keyboards must be successive.
 
-// Pipes
+// Pipes MIDI channels
 
-const byte PIPES_CHANNEL_MIN = 12; // The lowest MIDI channel used by pipes
-const byte PIPES_CHANNEL_MAX = 15; // The highest MIDI channel used by pipes
+const byte CHANNEL_PIPES_PRINCIPAL = 12; // MIDI channel for "Principal" pipes
+const byte CHANNEL_PIPES_STRINGS = 13; // MIDI channel for "String" pipes
+const byte CHANNEL_PIPES_FLUTES = 14; // MIDI channel for "Flute" pipes
+const byte CHANNEL_PIPES_REEDS = 15; // MIDI channel for "Reed" pipes
 
-const byte PRINCIPAL_PIPES_CHANNEL = 12; // MIDI channel for "Principal" pipes
-const byte STRING_PIPES_CHANNEL = 13; // MIDI channel for "String" pipes
-const byte FLUTE_PIPES_CHANNEL = 14; // MIDI channel for "Flute" pipes
-const byte REED_PIPES_CHANNEL = 15; // MIDI channel for "Reed" pipes
+const byte MIN_CHANNEL_PIPES = 12; // The lowest MIDI channel used by pipes
+const byte MAX_CHANNEL_PIPES = 15; // The highest MIDI channel used by pipes
 
-// Keyboards
+// Keyboards MIDI channels
 
-const byte KEYBOARDS_CHANNEL_MIN = 0; // The lowest MIDI channel used by keyboards
-const byte KEYBOARDS_CHANNEL_MAX = 2; // The lowest MIDI channel used by keyboards
+const byte CHANNEL_KEYBOARD_SWELL = 2; // Swell keyboard MIDI channel
+const byte CHANNEL_KEYBOARD_GREAT = 1; // Great keyboard MIDI channel
+const byte CHANNEL_KEYBOARD_PEDAL = 0; // Pedal keyboard MIDI channel
 
-const byte SWELL_CHANNEL = 2; // Swell keyboard MIDI channel
-const byte GREAT_CHANNEL = 1; // Great keyboard MIDI channel
-const byte PEDAL_CHANNEL = 0; // Pedal keyboard MIDI channel
+const byte MIN_CHANNEL_KEYBOARDS = 0; // The lowest MIDI channel used by keyboards
+const byte MAX_CHANNEL_KEYBOARDS = 2; // The lowest MIDI channel used by keyboards
 
+// Stops pins
 
+const byte DPIN_SwellOpenDiapason8 = 7; // Swell Stop Open Diapason 8
+const byte DPIN_SwellStoppedDiapason8 = 6; // Swell Stop Stopped Diapason 8
+const byte DPIN_SwellPrincipal4 = 5; // Swell Stop Principal 4
+const byte DPIN_SwellFlute4 = 4; // Swell Stop Principal 4
+const byte DPIN_SwellFifteenth2 = 3; // Swell Stop Fifteenth 2
+const byte DPIN_SwellTwelfth22thirds = 2; // Swell Stop twelfth 2 2/3
 
-void sendNoteEvent(byte channel, byte pitch, bool on);
+const byte DPIN_GreatOpenDiapason8 = 15; // Great Stop Open Diapason 8
+const byte DPIN_GreatLieblich8 = 14; // Great Stop Lieblich 8
+const byte DPIN_GreatSalicional8 = 13; // Great Stop Salicional 8 NEED TO REMOVE ARDUINO LED TO MAKE THIS WORK
+const byte DPIN_GreatGemsHorn4 = 12; // Great Stop GemsHorn 4 dont know yet
+const byte DPIN_GreatSalicet4 = 11; // Great Stop Salicet 4
+const byte DPIN_GreatNazard22thirds = 10; // Great Stop Nazard 2 2/3
+const byte DPIN_GreatHorn8 = 9; // Great Stop Horn 8
+const byte DPIN_GreatClarion4 = 8; // Great Stop Clarion 4
+
+const byte APIN_PedalBassFlute8 = 20; // Pedal BassFlute 8 (Analog pin)
+const byte DPIN_PedalBourdon16 = 19; // Pedal Bourdon 16
+
+const byte DPIN_SwellToGreat = 18;
+const byte DPIN_SwellToPedal = 17;
+const byte DPIN_GreatToPedal = 16;
+
+// Panic button pin
+
+const byte APIN_PanicButton = 21; // Analog pin
+
+// Value above which a read on an analog pin is considered HIGH.
+// On Arduino Nano, analog pins A6 and A7 that can't run in digital mode
+// so we do need to do analogRead() for them.
+
+const int ANALOG_READ_THRESHOLD = 200;
+
+////////////////////////////// CONSTANTS //////////////////////////////
 
 // Stops
 
-const int MAX_STOPS = 20; // Maximum number of stops
+const byte SwellOpenDiapason8 = 0x01;
+const byte SwellStoppedDiapason8 = 0x02;
+const byte SwellPrincipal4 = 0x04;
+const byte SwellFlute4 = 0x08;
+const byte SwellFifteenth2 = 0x10;
+const byte SwellTwelfth22thirds = 0x20;
 
-const int SwellOpenDiapason8 = 7; //Swell Stop Open Diapason 8
-const int SwellStoppedDiapason8 = 6; //Swell Stop Stopped Diapason 8
-const int SwellPrincipal4 = 5; //Swell Stop Principal 4
-const int SwellFlute4 = 4; //Swell Stop Principal 4
-const int SwellFifteenth2 = 3; //Swell Stop Fifteenth 2
-const int SwellTwelfth22thirds = 2; //Swell Stop twelfth 2 2/3
+const byte GreatOpenDiapason8 = 0x01;
+const byte GreatLieblich8 = 0x02;
+const byte GreatSalicional8 = 0x04;
+const byte GreatGemsHorn4 = 0x08;
+const byte GreatSalicet4 = 0x10;
+const byte GreatNazard22thirds = 0x20;
+const byte GreatHorn8 = 0x40;
+const byte GreatClarion4 = 0x80;
 
-const int GreatOpenDiapason8 = 15; //Great Stop Open Diapason 8
-const int GreatLieblich8 = 14; // Great Stop Lieblich 8
-const int GreatSalicional8 = 13; //Great Stop Salicional 8 NEED TO REMOVE ARDUINO LED TO MAKE THIS WORK
-const int GreatGemsHorn4 = 12; //Great Stop GemsHorn 4 dont know yet
-const int GreatSalicet4 = 11; //Great Stop Salicet 4
-const int GreatNazard22thirds = 10; //Great Stop Nazard 2 2/3
-const int GreatHorn8 = 9; //Great Stop Horn 8
-const int GreatClarion4 = 8; //Great Stop Clarion 4
+const byte PedalBassFlute8 = 0x01;
+const byte PedalBourdon16 = 0x02;
 
-const int PedalBassFlute8 = 20; //Pedal BassFlute 8
-const int PedalBourdon16 = 19; //Pedal Bourdon 16
-
-const int SwellToGreat = 18;
-const int SwellToPedal = 17;
-const int GreatToPedal = 16;
+const byte SwellToGreat = 0x01;
+const byte SwellToPedal = 0x02;
+const byte GreatToPedal = 0x04;
 
 // Transpose stuff
 
-const int Octave = 12;
-const int TwoOctave = 24;
-const int Twelfth = 31;
+const byte Octave = 12;
+const byte TwoOctave = 2 * Octave;
+const byte Twelfth = TwoOctave + 7;
 
-// Statuses
+////////////////////////////// GLOBALS //////////////////////////////
 
-const int NUM_KEYBOARDS = KEYBOARDS_CHANNEL_MAX - KEYBOARDS_CHANNEL_MIN + 1;
-const int NUM_PIPES = PIPES_CHANNEL_MAX - PIPES_CHANNEL_MIN + 1;
+// Stops buffers (bitmasks)
 
-bool keys[NUM_KEYBOARDS][128] = {}; // Active keys
-bool pipes[NUM_PIPES][128] = {}; // Active pipes
-bool pipesBuffer[NUM_PIPES][128] = {}; // Buffer for the newly active pipes
-bool stops[MAX_STOPS + 1] = {}; // Active stops
-bool stopsBuffer[MAX_STOPS + 1] = {}; // Buffer for the newly active stops
+byte swellStops = 0x00;
+byte greatStops = 0x00;
+byte pedalStops = 0x00;
+byte couplerStops = 0x00;
+
+// Panic button state
+
+bool panicButtonState = false;
+
+// State buffers
+
+const byte NUM_KEYBOARDS = MAX_CHANNEL_KEYBOARDS - MIN_CHANNEL_KEYBOARDS + 1;
+const byte NUM_PIPES = MAX_CHANNEL_PIPES - MIN_CHANNEL_PIPES + 1;
+
+bool keys[NUM_KEYBOARDS][128] = {}; // Active keys buffer
+bool pipes[NUM_PIPES][128] = {}; // Active pipes buffer
+bool newPipes[NUM_PIPES][128] = {}; // Newly active pipes buffer
+
+// Set to true when the keys/stops configuration has changed and the pipes need to be recomputed
 
 bool shouldUpdatePipes = false;
 
-// --------------------------------------------------
-void setBufferPipe(byte channel, int pitch);
-// This is the function that maps the keyboards + stops to the organ pipes.
-void setBufferPipeForKey(byte channel, byte pitch) {
-  if (channel == SWELL_CHANNEL) //all of the note on commands for the swell channel switches
-  {
-    // Swell Stop To Principal Pipes
-    if (stops[SwellOpenDiapason8]) {
-      setBufferPipe(PRINCIPAL_PIPES_CHANNEL, pitch);
+////////////////////////////// MAIN CODE //////////////////////////////
+
+// Create MIDI Library singleton instance
+
+MIDI_CREATE_DEFAULT_INSTANCE();
+
+/**
+ * Set the organ pipes in the new buffer for the given key and stops configuration.
+ * @param channel Keyboard MIDI channel (KEYBOARDS_CHANNEL_MIN - KEYBOARDS_CHANNEL_MAX)
+ * @param pitch MIDI key (0 - 127)
+ */
+void setBufferPipesForKey(byte channel, byte pitch) {
+  switch (channel) {
+  case CHANNEL_KEYBOARD_SWELL:
+    setSwellBufferPipesForKey(pitch);
+    break;
+
+  case CHANNEL_KEYBOARD_GREAT:
+    setGreatBufferPipesForKey(pitch);
+    if (couplerStops & SwellToGreat) {
+      setSwellBufferPipesForKey(pitch);
     }
-    // Swell Stop To Flute Pipes
-    if (stops[SwellStoppedDiapason8]) {
-      setBufferPipe(FLUTE_PIPES_CHANNEL, pitch);
+    break;
+
+  case CHANNEL_KEYBOARD_PEDAL:
+    setPedalBufferPipesForKey(pitch);
+    if (couplerStops & SwellToPedal) {
+      setSwellBufferPipesForKey(pitch);
     }
-    // Swell Stop To Principal Pipes + 1 Octave
-    if (stops[SwellPrincipal4]) {
-      setBufferPipe(PRINCIPAL_PIPES_CHANNEL, pitch + Octave);
+    if (couplerStops & GreatToPedal) {
+      setGreatBufferPipesForKey(pitch);
     }
-    // Swell Stop To Flute Pipes + 1 & 2 Octave
-    if (stops[SwellFlute4]) {
-      setBufferPipe(FLUTE_PIPES_CHANNEL, pitch + Octave); //Swell Stop To Flute Pipes + 1 Octave
-      setBufferPipe(FLUTE_PIPES_CHANNEL, pitch + TwoOctave);
-    }
-    // Swell Stop To Principal Pipes + 2 Octave
-    if (stops[SwellFifteenth2]) {
-      setBufferPipe(PRINCIPAL_PIPES_CHANNEL, pitch + TwoOctave);
-    }
-    // Swell Stop To Principal Pipes + 2 Octave and a fifth
-    if (stops[SwellTwelfth22thirds]) {
-      setBufferPipe(PRINCIPAL_PIPES_CHANNEL, pitch + Twelfth);
-    }
+    break;
+
+  default:
+    // Not supported
+    break;
   }
+}
 
-  // All of the note on commands for the Great channel switches
-  if (channel == GREAT_CHANNEL) {
-    // Great Stop To Principal Pipes
-    if (stops[GreatOpenDiapason8]) {
-      setBufferPipe(PRINCIPAL_PIPES_CHANNEL, pitch);
-    }
-    // Great Stop To Flute Pipes
-    if (stops[GreatLieblich8]) {
-      setBufferPipe(FLUTE_PIPES_CHANNEL, pitch);
-    }
-    // Great Stop To String Pipes
-    if (stops[GreatSalicional8]) {
-      setBufferPipe(STRING_PIPES_CHANNEL, pitch);
-    }
-    // Great Stop To DONT KNOW YET
-    if (stops[GreatGemsHorn4]) {
-      setBufferPipe(PRINCIPAL_PIPES_CHANNEL, pitch + Octave);
-    }
-    // Great Stop To DONT KNOW YET
-    if (stops[GreatSalicet4]) {
-      setBufferPipe(STRING_PIPES_CHANNEL, pitch + Octave);
-    }
-    // Great Stop To Flute Rank Plus a third
-    if (stops[GreatNazard22thirds]) {
-      setBufferPipe(FLUTE_PIPES_CHANNEL, pitch + Twelfth);
-    }
-    // Great Stop To Reeds
-    if (stops[GreatHorn8]) {
-      setBufferPipe(REED_PIPES_CHANNEL, pitch);
-    }
-    // Great Stop To Reeds + Octave
-    if (stops[GreatClarion4]) {
-      setBufferPipe(REED_PIPES_CHANNEL, pitch + Octave);
-    }
-
-    // COPIES THE SWELL SETTINGS TO THE GREAT KEYBOARD
-    if (stops[SwellToGreat]) {
-      // Swell Stop To Principal Pipes
-      if (stops[SwellOpenDiapason8]) {
-        setBufferPipe(PRINCIPAL_PIPES_CHANNEL, pitch);
-      }
-      // Swell Stop To Flute Pipes
-      if (stops[SwellStoppedDiapason8]) {
-        setBufferPipe(FLUTE_PIPES_CHANNEL, pitch);
-      }
-      // Swell Stop To Principal Pipes + 1 Octave
-      if (stops[SwellPrincipal4]) {
-        setBufferPipe(PRINCIPAL_PIPES_CHANNEL, pitch + Octave);
-      }
-      // Swell Stop To Flute Pipes + 1 Octave
-      if (stops[SwellFlute4]) {
-        setBufferPipe(FLUTE_PIPES_CHANNEL, pitch + Octave); // Swell Stop To Flute Pipes + 1 Octave
-        setBufferPipe(FLUTE_PIPES_CHANNEL, pitch + TwoOctave);
-      }
-      // Swell Stop To Principal Pipes + 2 Octave
-      if (stops[SwellFifteenth2]) {
-        setBufferPipe(PRINCIPAL_PIPES_CHANNEL, pitch + TwoOctave);
-      }
-      // Swell Stop To Principal Pipes + 2 Octave and a fifth
-      if (stops[SwellTwelfth22thirds]) {
-        setBufferPipe(PRINCIPAL_PIPES_CHANNEL, pitch + Twelfth);
-      }
-    }
+/**
+ * Set the organ pipes in the new buffer for Swell stops.
+ * @param pitch MIDI key (0 - 127)
+ */
+void setSwellBufferPipesForKey(byte pitch) {
+  // Swell stop to Principal pipes
+  if (swellStops & SwellOpenDiapason8) {
+    setNewBufferPipe(CHANNEL_PIPES_PRINCIPAL, pitch);
   }
+  // Swell stop to Flute pipes
+  if (swellStops & SwellStoppedDiapason8) {
+    setNewBufferPipe(CHANNEL_PIPES_FLUTES, pitch);
+  }
+  // Swell stop to Principal pipes + 1 Octave
+  if (swellStops & SwellPrincipal4) {
+    setNewBufferPipe(CHANNEL_PIPES_PRINCIPAL, pitch + Octave);
+  }
+  // Swell stop to Flute pipes + 1 & 2 Octave
+  if (swellStops & SwellFlute4) {
+    setNewBufferPipe(CHANNEL_PIPES_FLUTES, pitch + Octave);
+    setNewBufferPipe(CHANNEL_PIPES_FLUTES, pitch + TwoOctave);
+  }
+  // Swell stop to Principal pipes + 2 Octave
+  if (swellStops & SwellFifteenth2) {
+    setNewBufferPipe(CHANNEL_PIPES_PRINCIPAL, pitch + TwoOctave);
+  }
+  // Swell stop to Principal pipes + 2 Octave and a fifth
+  if (swellStops & SwellTwelfth22thirds) {
+    setNewBufferPipe(CHANNEL_PIPES_PRINCIPAL, pitch + Twelfth);
+  }
+}
 
-  // all of the note on commands for the Pedal channel switches
-  if (channel == PEDAL_CHANNEL) {
-    // Great Stop To string Pipes
-    if (stops[PedalBassFlute8]) {
-      setBufferPipe(PRINCIPAL_PIPES_CHANNEL, pitch); // Great Stop To Principal Pipes
-      setBufferPipe(STRING_PIPES_CHANNEL, pitch);
-    }
-    // Great Stop To Bourdon Pipes
-    if (stops[PedalBourdon16]) {
-      setBufferPipe(FLUTE_PIPES_CHANNEL, pitch);
+/**
+ * Set the organ pipes in the new buffer for Great stops.
+ * @param pitch MIDI key (0 - 127)
+ */
+void setGreatBufferPipesForKey(byte pitch) {
+  // Great stop to Principal pipes
+  if (greatStops & GreatOpenDiapason8) {
+    setNewBufferPipe(CHANNEL_PIPES_PRINCIPAL, pitch);
+  }
+  // Great stop to Flute pipes
+  if (greatStops & GreatLieblich8) {
+    setNewBufferPipe(CHANNEL_PIPES_FLUTES, pitch);
+  }
+  // Great stop to String pipes
+  if (greatStops & GreatSalicional8) {
+    setNewBufferPipe(CHANNEL_PIPES_STRINGS, pitch);
+  }
+  // Great stop to DONT KNOW YET
+  if (greatStops & GreatGemsHorn4) {
+    setNewBufferPipe(CHANNEL_PIPES_PRINCIPAL, pitch + Octave);
+  }
+  // Great stop to DONT KNOW YET
+  if (greatStops & GreatSalicet4) {
+    setNewBufferPipe(CHANNEL_PIPES_STRINGS, pitch + Octave);
+  }
+  // Great stop to Flute rank + a third
+  if (greatStops & GreatNazard22thirds) {
+    setNewBufferPipe(CHANNEL_PIPES_FLUTES, pitch + Twelfth);
+  }
+  // Great stop to Reeds
+  if (greatStops & GreatHorn8) {
+    setNewBufferPipe(CHANNEL_PIPES_REEDS, pitch);
+  }
+  // Great stop to Reeds + octave
+  if (greatStops & GreatClarion4) {
+    setNewBufferPipe(CHANNEL_PIPES_REEDS, pitch + Octave);
+  }
+}
+
+/**
+ * Set the organ pipes in the new buffer for Pedal stops.
+ * @param pitch MIDI key (0 - 127)
+ */
+void setPedalBufferPipesForKey(byte pitch) {
+  // Pedal stop to String pipes
+  if (pedalStops & PedalBassFlute8) {
+    setNewBufferPipe(CHANNEL_PIPES_PRINCIPAL, pitch);
+    setNewBufferPipe(CHANNEL_PIPES_STRINGS, pitch);
+  }
+  // Pedal stop bo Bourdon pipes
+  if (pedalStops & PedalBourdon16) {
+    setNewBufferPipe(CHANNEL_PIPES_FLUTES, pitch);
+  }
+}
+
+/**
+ * Clear the newly active pipes buffer.
+ */
+void clearNewPipesBuffer() {
+  for (byte pipeIndex = 0; pipeIndex < NUM_PIPES; pipeIndex++) {
+    for (byte pitch = 0; pitch < 128; pitch++) {
+      newPipes[pipeIndex][pitch] = false;
     }
   }
 }
 
-void clearPipesBuffer() {
-  for (int pipeIndex = 0; pipeIndex < NUM_PIPES; pipeIndex++) {
-    for (int pitch = 0; pitch < 128; pitch++) {
-      pipesBuffer[pipeIndex][pitch] = false;
-    }
-  }
-}
-
-// Sets the organ pipe in the buffer
-void setBufferPipe(byte channel, int pitch) {
+/**
+ * Set a newly active pipe.
+ * @param channel Pipe MIDI channel (MIN_CHANNEL_PIPES - MAX_CHANNEL_PIPES)
+ * @param pitch MIDI key (0 - 127) Out of range values are ignored.
+ */
+void setNewBufferPipe(byte channel, int pitch) {
   if (pitch >= 0 && pitch <= 127) {
-    // Serial.print("setBufferPipe ");
-    // Serial.print(channel);
-    // Serial.print(" ");
-    // Serial.println(pitch);
-    pipesBuffer[channel - PIPES_CHANNEL_MIN][pitch] = true;
+    newPipes[channel - MIN_CHANNEL_PIPES][pitch] = true;
   }
 }
 
-
-// Update the pipe status based on keyboard and stops and send MIDI note on/off events accordingly
+/**
+ * Update the pipes buffer based on the keyboard and stops configuration
+ * then send the MIDI note on/off events to the pipes accordingly.
+ */
 void updatePipes() {
-  int channelIndex;
+  byte channelIndex;
 
-  // Serial.println("---- Compute keys ----");
-
-  // Compute new active pipes buffer based on active keys and stops
-  clearPipesBuffer();
-  for (int channel = KEYBOARDS_CHANNEL_MIN; channel <= KEYBOARDS_CHANNEL_MAX; channel++) {
-    channelIndex = channel - KEYBOARDS_CHANNEL_MIN;
-    for (int pitch = 0; pitch < 128; pitch++) {
+  // Compute the newly active pipes buffer based on the active keys and stops
+  clearNewPipesBuffer();
+  for (byte channel = MIN_CHANNEL_KEYBOARDS; channel <= MAX_CHANNEL_KEYBOARDS; channel++) {
+    channelIndex = channel - MIN_CHANNEL_KEYBOARDS;
+    for (byte pitch = 0; pitch < 128; pitch++) {
       if (keys[channelIndex][pitch]) {
-        // Serial.print("Key ON ");
-        // Serial.print(channel + 1);
-        // Serial.print(" ");
-        // Serial.println(pitch);
-        setBufferPipeForKey(channel, pitch);
+        setBufferPipesForKey(channel, pitch);
       }
     }
   }
 
-  // Compare buffer with current pipes status and send MIDI note events
-  for (int channel = PIPES_CHANNEL_MIN; channel <= PIPES_CHANNEL_MAX; channel++) {
-    channelIndex = channel - PIPES_CHANNEL_MIN;
-    for (int pitch = 0; pitch < 128; pitch++) {
-      bool isPipeOn = pipesBuffer[channelIndex][pitch];
-      // Pipe status has changed
+  // Compare the new pipes buffer with the current one and send MIDI note events for each difference
+  for (byte channel = MIN_CHANNEL_PIPES; channel <= MAX_CHANNEL_PIPES; channel++) {
+    channelIndex = channel - MIN_CHANNEL_PIPES;
+    for (byte pitch = 0; pitch < 128; pitch++) {
+      bool isPipeOn = newPipes[channelIndex][pitch];
+      // Pipe state has changed
       if (isPipeOn != pipes[channelIndex][pitch]) {
         pipes[channelIndex][pitch] = isPipeOn;
-        // Send note event to reflect the new pipe status
+        // Send note event to reflect the new pipe state
         sendNoteEvent(channel, pitch, isPipeOn);
-        // Process the MIDI in messages that have arrived during the process
-        // to prevent the input buffer from overrunning.
-        while (MIDI.getTransport()->available() != 0) {
-          MIDI.read();
-        }
+        // Process the MIDI in messages that have arrived during the note sending
+        // to prevent the input buffer from overrunning because sendNoteEvent
+        // is a blocking operation.
+        readAllMIDI();
       }
     }
   }
 }
 
-// We may need this one :)
+/**
+ * Send a MIDI note off event to all the organ pipes.
+ */
 void panic() {
-  for (int channel = PIPES_CHANNEL_MIN; channel <= PIPES_CHANNEL_MAX; channel++) {
-    for (int pitch = 0; pitch < 128; pitch++) {
+  for (byte channel = MIN_CHANNEL_PIPES; channel <= MAX_CHANNEL_PIPES; channel++) {
+    for (byte pitch = 0; pitch < 128; pitch++) {
       sendNoteEvent(channel, pitch, false);
-      pipes[channel - PIPES_CHANNEL_MIN][pitch] = false;
+      pipes[channel - MIN_CHANNEL_PIPES][pitch] = false;
     }
   }
 }
 
-// Set the status of a keyboard key
+/**
+ * Set the state of a keyboard key
+ * @param channel Keyboard MIDI channel (0 - 15)
+ * @param pitch MIDI key (0 - 127)
+ * @param on True when the key is down
+ */
 void setKey(byte channel, byte pitch, bool on) {
-  // Serial.print(" >>> Set MIDI key ");
-  // Serial.print(on ? "ON " : "OFF ");
-  // Serial.print(channel + 1);
-  // Serial.print(" ");
-  // Serial.println(pitch);
-  if (channel >= KEYBOARDS_CHANNEL_MIN && channel <= KEYBOARDS_CHANNEL_MAX) {
-    keys[channel - KEYBOARDS_CHANNEL_MIN][pitch] = on;
-    shouldUpdatePipes = true;
-  }
-}
-
-void refreshStops() {
-  // Refresh active stops buffer
-//   stopsBuffer[SwellOpenDiapason8] = digitalRead(SwellOpenDiapason8) == HIGH;
-//   stopsBuffer[SwellStoppedDiapason8] = digitalRead(SwellStoppedDiapason8) == HIGH;
-//   stopsBuffer[SwellPrincipal4] = digitalRead(SwellPrincipal4) == HIGH;
-//   stopsBuffer[SwellFlute4] = digitalRead(SwellFlute4) == HIGH;
-//   stopsBuffer[SwellFifteenth2] = digitalRead(SwellFifteenth2) == HIGH;
-//   stopsBuffer[SwellTwelfth22thirds] = digitalRead(SwellTwelfth22thirds) == HIGH;
-
-//   stopsBuffer[GreatOpenDiapason8] = digitalRead(GreatOpenDiapason8) == HIGH;
-//   stopsBuffer[GreatLieblich8] = digitalRead(GreatLieblich8) == HIGH;
-//   stopsBuffer[GreatSalicional8] = digitalRead(GreatSalicional8) == HIGH;
-//   stopsBuffer[GreatGemsHorn4] = digitalRead(GreatGemsHorn4) == HIGH;
-//   stopsBuffer[GreatSalicet4] = digitalRead(GreatSalicet4) == HIGH;
-//   stopsBuffer[GreatNazard22thirds] = digitalRead(GreatNazard22thirds) == HIGH;
-//   stopsBuffer[GreatHorn8] = digitalRead(GreatHorn8) == HIGH;
-//   stopsBuffer[GreatClarion4] = digitalRead(GreatClarion4) == HIGH;
-
-//   stopsBuffer[PedalBassFlute8] = analogRead(PedalBassFlute8) > 200;
-//   stopsBuffer[PedalBourdon16] = digitalRead(PedalBourdon16) == HIGH;
-
-  stopsBuffer[SwellOpenDiapason8] = true;
-  stopsBuffer[SwellStoppedDiapason8] = true;
-  stopsBuffer[SwellPrincipal4] = true;
-  stopsBuffer[SwellFlute4] = true;
-  stopsBuffer[SwellFifteenth2] = true;
-  stopsBuffer[SwellTwelfth22thirds] = true;
-
-  stopsBuffer[GreatOpenDiapason8] = true;
-  stopsBuffer[GreatLieblich8] = true;
-  stopsBuffer[GreatSalicional8] = true;
-  stopsBuffer[GreatGemsHorn4] = true;
-  stopsBuffer[GreatSalicet4] = true;
-  stopsBuffer[GreatNazard22thirds] = true;
-  stopsBuffer[GreatHorn8] = true;
-  stopsBuffer[GreatClarion4] = true;
-
-  stopsBuffer[PedalBassFlute8] = true;
-  stopsBuffer[PedalBourdon16] = true;
-
-  // Compare new stop statuses with the current ones
-  bool haveStopsChanged = false;
-  for (int stop = 0; stop <= MAX_STOPS; stop++) {
-    if (stopsBuffer[stop] != stops[stop]) {
-      // Serial.print(" >>> Changed stop ");
-      // Serial.print(stop);
-      // Serial.println(stopsBuffer[stop] ? " ON" : " OFF");
-      haveStopsChanged = true;
-      stops[stop] = stopsBuffer[stop];
+  if (channel >= MIN_CHANNEL_KEYBOARDS && channel <= MAX_CHANNEL_KEYBOARDS) {
+    byte channelIndex = channel - MIN_CHANNEL_KEYBOARDS;
+    if (keys[channelIndex][pitch] != on) {
+      keys[channelIndex][pitch] = on;
+      shouldUpdatePipes = true;
     }
   }
-
-  // Update pipes statuses if the stops settings have changed
-  if (haveStopsChanged) {
-    shouldUpdatePipes = true;
-  }
 }
 
-// Handle MIDI note on received by the MIDI API
+/**
+ * Refresh the active stops buffers.
+ */
+void refreshStops() {
+  byte newSwellStops =
+    (digitalRead(DPIN_SwellOpenDiapason8) == HIGH ? SwellOpenDiapason8 : 0x00) |
+    (digitalRead(DPIN_SwellStoppedDiapason8) == HIGH ? SwellStoppedDiapason8 : 0x00) |
+    (digitalRead(DPIN_SwellPrincipal4) == HIGH ? SwellPrincipal4 : 0x00) |
+    (digitalRead(DPIN_SwellFlute4) == HIGH ? SwellFlute4 : 0x00) |
+    (digitalRead(DPIN_SwellFifteenth2) == HIGH ? SwellFifteenth2 : 0x00) |
+    (digitalRead(DPIN_SwellTwelfth22thirds) == HIGH ? SwellTwelfth22thirds : 0x00);
+
+  byte newGreatStops =
+    (digitalRead(DPIN_GreatOpenDiapason8) == HIGH ? GreatOpenDiapason8 : 0x00) |
+    (digitalRead(DPIN_GreatLieblich8) == HIGH ? GreatLieblich8 : 0x00) |
+    (digitalRead(DPIN_GreatSalicional8) == HIGH ? GreatSalicional8 : 0x00) |
+    (digitalRead(DPIN_GreatGemsHorn4) == HIGH ? GreatGemsHorn4 : 0x00) |
+    (digitalRead(DPIN_GreatSalicet4) == HIGH ? GreatSalicet4 : 0x00) |
+    (digitalRead(DPIN_GreatNazard22thirds) == HIGH ? GreatNazard22thirds : 0x00) |
+    (digitalRead(DPIN_GreatHorn8) == HIGH ? GreatHorn8 : 0x00) |
+    (digitalRead(DPIN_GreatClarion4) == HIGH ? GreatClarion4 : 0x00);
+
+  byte newPedalStops =
+    (analogRead(APIN_PedalBassFlute8) > ANALOG_READ_THRESHOLD ? PedalBassFlute8 : 0x00) |
+    (digitalRead(DPIN_PedalBourdon16) == HIGH ? PedalBourdon16 : 0x00);
+
+  byte newCouplerStops =
+    (digitalRead(DPIN_SwellToGreat) == HIGH ? SwellToGreat : 0x00) |
+    (digitalRead(DPIN_SwellToPedal) == HIGH ? SwellToPedal : 0x00) |
+    (digitalRead(DPIN_GreatToPedal) == HIGH ? GreatToPedal : 0x00);
+
+  // Update pipes if the stops configuration has changed
+  if (
+    newSwellStops != swellStops ||
+    newGreatStops != greatStops ||
+    newPedalStops != pedalStops ||
+    newCouplerStops != couplerStops
+  ) {
+    shouldUpdatePipes = true;
+  }
+
+  // Update active stops buffers
+  swellStops = newSwellStops;
+  greatStops = newGreatStops;
+  pedalStops = newPedalStops;
+  couplerStops = newCouplerStops;
+}
+
+/**
+ * Handle the panic button.
+ * Reset all buffers and send MIDI panic to the pipes when the button is released.
+ */
+void handlePanicButton() {
+  bool newPanicButtonState = analogRead(APIN_PanicButton) > ANALOG_READ_THRESHOLD;
+
+  // Panic is sent on button release
+  if (!newPanicButtonState && panicButtonState) {
+    // Clear keys buffers
+    for (byte keyboardIndex = 0; keyboardIndex < NUM_KEYBOARDS; keyboardIndex++) {
+      for (byte pitch = 0; pitch < 128; pitch++) {
+        keys[keyboardIndex][pitch] = false;
+      }
+    }
+
+    // Clear stops buffers
+    swellStops = 0x00;
+    greatStops = 0x00;
+    pedalStops = 0x00;
+    couplerStops = 0x00;
+
+    // MIDI panic (also clears pipes buffer)
+    panic();
+  }
+
+  panicButtonState = newPanicButtonState;
+}
+
+/**
+ * Received MIDI note on handler.
+ * @param channel Keyboard MIDI channel (1 - 16)
+ * @param pitch MIDI key (0 - 127)
+ * @param velocity (0 - 127)
+ */
 void handleMidiNoteOn(byte channel, byte pitch, byte velocity) {
   // Some MIDI keyboards send note on events with 0 velocity instead of proper note off events
   setKey(channel - 1, pitch, velocity > 0);
 }
 
-// Handle MIDI note off received by the MIDI API
+/**
+ * Received MIDI note off handler.
+ * @param channel Keyboard MIDI channel (1 - 16)
+ * @param pitch MIDI key (0 - 127)
+ * @param velocity (0 - 127)
+ */
 void handleMidiNoteOff(byte channel, byte pitch, byte velocity) {
   setKey(channel - 1, pitch, false);
 }
 
-// Send a MIDI note event to a pipe
+/**
+ * Send a MIDI note event to a pipe.
+ * @param channel Pipe MIDI channel (0 - 15)
+ * @param pitch MIDI key (0 - 127)
+ * @param on True for a note on, false for a note off
+ */
 void sendNoteEvent(byte channel, byte pitch, bool on) {
   if (on) {
     MIDI.sendNoteOn(pitch, 127, channel + 1);
-    // Serial.print(" <<< MIDI Note ON ");
   } else {
     MIDI.sendNoteOff(pitch, 0, channel + 1);
-    // Serial.print(" <<< MIDI Note OFF ");
   }
-  // Serial.print(channel + 1);
-  // Serial.print(" ");
-  // Serial.println(pitch);
 }
 
-void setup() {
+/**
+ * Process all the incoming MIDI messages in the buffer.
+ */
+void readAllMIDI() {
+  while (MIDI.getTransport() -> available() != 0) {
+    MIDI.read();
+  }
+}
 
+/**
+ * Initialize MIDI
+ */
+void initMIDI() {
   MIDI.setHandleNoteOn(handleMidiNoteOn);
   MIDI.setHandleNoteOff(handleMidiNoteOff);
   MIDI.begin(MIDI_CHANNEL_OMNI);
-  Serial.begin(115200); // Initialize serial port for debugging
   MIDI.turnThruOff();
+}
 
-  pinMode(SwellOpenDiapason8, INPUT);
-  pinMode(SwellStoppedDiapason8, INPUT);
-  pinMode(SwellPrincipal4, INPUT);
-  pinMode(SwellFlute4, INPUT);
-  pinMode(SwellFifteenth2, INPUT);
-  pinMode(SwellTwelfth22thirds, INPUT);
+/**
+ * Main setup function.
+ */
+void setup() {
+  initMIDI();
 
-  pinMode(GreatOpenDiapason8, INPUT);
-  pinMode(GreatLieblich8, INPUT);
-  pinMode(GreatSalicional8, INPUT);
-  pinMode(GreatGemsHorn4, INPUT);
-  pinMode(GreatSalicet4, INPUT);
-  pinMode(GreatNazard22thirds, INPUT);
-  pinMode(GreatHorn8, INPUT);
-  pinMode(GreatClarion4, INPUT);
+  pinMode(DPIN_SwellOpenDiapason8, INPUT);
+  pinMode(DPIN_SwellStoppedDiapason8, INPUT);
+  pinMode(DPIN_SwellPrincipal4, INPUT);
+  pinMode(DPIN_SwellFlute4, INPUT);
+  pinMode(DPIN_SwellFifteenth2, INPUT);
+  pinMode(DPIN_SwellTwelfth22thirds, INPUT);
 
-  pinMode(PedalBassFlute8, INPUT);
-  pinMode(PedalBourdon16, INPUT);
+  pinMode(DPIN_GreatOpenDiapason8, INPUT);
+  pinMode(DPIN_GreatLieblich8, INPUT);
+  pinMode(DPIN_GreatSalicional8, INPUT);
+  pinMode(DPIN_GreatGemsHorn4, INPUT);
+  pinMode(DPIN_GreatSalicet4, INPUT);
+  pinMode(DPIN_GreatNazard22thirds, INPUT);
+  pinMode(DPIN_GreatHorn8, INPUT);
+  pinMode(DPIN_GreatClarion4, INPUT);
 
-  pinMode(SwellToGreat, INPUT);
-  pinMode(SwellToPedal, INPUT);
-  pinMode(GreatToPedal, INPUT);
+  pinMode(APIN_PedalBassFlute8, INPUT);
+  pinMode(DPIN_PedalBourdon16, INPUT);
+
+  pinMode(DPIN_SwellToGreat, INPUT);
+  pinMode(DPIN_SwellToPedal, INPUT);
+  pinMode(DPIN_GreatToPedal, INPUT);
+
+  pinMode(APIN_PanicButton, INPUT);
 
   shouldUpdatePipes = false;
 
   // Keep calm and
   panic();
-
-  // TODO: ▼▼▼ remove these lines ▼▼▼
-  // handleMidiNoteOn(3, 60, 127); // C4
-  // handleMidiNoteOn(3, 72, 127); // C5
-  // TODO: ▲▲▲ remove these lines ▲▲▲
 }
-//------------------------------------------------
 
+/**
+ * Main loop.
+ */
 void loop() {
-  // Update stop statuses
+  // Panic button
+  handlePanicButton();
+
+  // Update stop states
   refreshStops();
 
-  // Process all the incoming MIDI messages in the serial buffer
-  while (MIDI.getTransport()->available() != 0) {
-    MIDI.read();
-  }
+  // Read incoming MIDI messages
+  readAllMIDI();
 
   // Update the pipes if some changes have been received
   if (shouldUpdatePipes) {
