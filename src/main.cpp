@@ -2,19 +2,19 @@
 
 /**
  * The general approach of this solution is the following:
- * 
- * Read and track all of the input keyboard note states, we want the actual physical keys being 
+ *
+ * Read and track all of the input keyboard note states, we want the actual physical keys being
  * pressed here, not the transposed/combined ouput
- * 
- * Read and track the stop switch states 
- * 
- * Caclculate the output notes for each combine the physical keys being pressed with the stop 
+ *
+ * Read and track the stop switch states
+ *
+ * Caclculate the output notes for each combine the physical keys being pressed with the stop
  * switches that are enabled to determine what output notes and channels should be active
- * 
- * When setting the output notes, only send a MIDI On/Off message if theoutput is different that 
+ *
+ * When setting the output notes, only send a MIDI On/Off message if theoutput is different that
  * what it was before
  *
- * This should allow for the same notes to be pressed and released from multiple keyboards without 
+ * This should allow for the same notes to be pressed and released from multiple keyboards without
  * prematurely stopping a note. It will also allow for the output/pipe notes to respond correctly to
  * changes in the stop switches while keys are being held down across the various keyboard inputs.
  *
@@ -30,7 +30,7 @@ MIDI_CREATE_DEFAULT_INSTANCE();
 
 // Uncomment this line to force all settings for local testing,
 // such as 115200 serial baud rate and force-enabling all stop switches
-//#define LOCAL_TESTING_MODE 1
+// #define LOCAL_TESTING_MODE 1
 
 /**
  * ON/OFF constants help with readability
@@ -126,7 +126,7 @@ MIDI_CREATE_DEFAULT_INSTANCE();
 
 #define PanicButton_PIN_21 21 // Pin D21/A7 is analog input only
 
-///////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // Program State
 //
@@ -164,7 +164,7 @@ byte NewStringPipesState[NOTES_BITMAP_ARRAY_SIZE] = {};
 byte NewFlutePipesState[NOTES_BITMAP_ARRAY_SIZE] = {};
 byte NewReedPipesState[NOTES_BITMAP_ARRAY_SIZE] = {};
 
-///////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 //  Forward Definitions of Functions
 //
@@ -222,7 +222,7 @@ boolean popAndSendMidi();
 void digitalReadSwitch(byte pin);
 void analogReadSwitch(byte pin);
 
-///////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // Setup and Loop
 //
@@ -302,7 +302,7 @@ void loop()
   sendMidi(); // Send a batch of midi messages from the output ring buffer
 }
 
-///////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // Panic
 //
@@ -380,7 +380,7 @@ void panic()
   panicking = false;
 }
 
-///////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // MIDI
 //
@@ -474,7 +474,7 @@ void sendMidi()
   // Serial.flush();
 }
 
-///////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // State Management
 //
@@ -637,7 +637,7 @@ void resetNewState()
   }
 }
 
-///////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // Calculate Output
 //
@@ -818,7 +818,7 @@ void enableNoteForPedalSwitches(byte pitch)
   }
 }
 
-///////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // Bitmap Functions
 //
@@ -863,7 +863,7 @@ void printNoteBitmap(byte bitmap[])
   Serial.println();
 }
 
-///////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // Output Ring Buffer
 //
@@ -956,7 +956,7 @@ boolean popAndSendMidi()
   return true;
 }
 
-///////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // IO Helpers
 //
