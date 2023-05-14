@@ -6,6 +6,21 @@
  *                                   Peter Buxton, porl, EK#1979, LMNC Discord and Patreon
  * Github Gist: https://gist.github.com/criggs/188ae7e3e8d23a65499f12d167bec74d
  *
+ *
+ * =================================================================================================
+ * Remaining TODOs
+ * -------------------------------------------------------------------------------------------------
+ *
+ * [ ] TODO 00: Make sure the analog pins have pulldown resistors (not a code TODO)
+ * [ ] TODO 01: Enable panic button after double checking pulldown resistor
+ * [ ] TODO 02: Do we need to transpose SwellToGreat Notes
+ * [ ] TODO 03: Do we need to transpose SwellToPedal Notes
+ * [ ] TODO 04: Do we need to transpose GreatToPedal Notes
+ * [ ] TODO 05: Great Stop To DONT KNOW YET (GreatGemsHorn4_PIN_12)
+ * [ ] TODO 06: Great Stop To DONT KNOW YET (GreatSalicet4_PIN_11)
+ *
+ * Note: Search the code below for TODO XX to find the remaining TODO
+ *
  * =================================================================================================
  * Approach tl;dr
  * -------------------------------------------------------------------------------------------------
@@ -81,7 +96,7 @@ MIDI_CREATE_DEFAULT_INSTANCE();
 
 // Uncomment this line to force all settings for local testing,
 // such as 115200 serial baud rate and force-enabling all stop switches
-//#define LOCAL_TESTING_MODE 1
+// #define LOCAL_TESTING_MODE 1
 
 /**
  * ON/OFF constants help with readability
@@ -185,7 +200,7 @@ MIDI_CREATE_DEFAULT_INSTANCE();
 /**
  * Execution flags to handle different program states
  */
-boolean panicking = false;        // Let functions know if we're in panic mode
+boolean panicking = false;       // Let functions know if we're in panic mode
 boolean handlerExecuted = false; // Keeps track of whether a note was handled or not
 
 /**
@@ -363,7 +378,7 @@ void loop()
  */
 void checkForPanic()
 {
-  // TODO: Determine the correct evaluation for the panic button based on using a pulldown resistor or not
+  // TODO 01: Determine the correct evaluation for the panic button based on using a pulldown resistor or not
   // on the analog input pin.
   boolean panicButtonOn = false; // analogRead(PanicButton_PIN_21) > 200 // Pin D21/A7 is analog input only
   if (panicButtonOn)
@@ -709,7 +724,7 @@ void calculateOutputNotes()
       enableNoteForGreatSwitches(pitch);
       if (StopSwitchStates[SwellToGreat_PIN_18]) // Coupler to combine Swell with Pedal
       {
-        // TODO: Do we need to transpose up or down any octaves here?
+        // TODO 02: Do we need to transpose up or down any octaves here?
         enableNoteForSwellSwitches(pitch);
       }
     }
@@ -720,12 +735,12 @@ void calculateOutputNotes()
       enableNoteForPedalSwitches(pitch);
       if (StopSwitchStates[SwellToPedal_PIN_17]) // Coupler to combine Swell with Pedal
       {
-        // TODO: Do we need to transpose up or down any octaves here?
+        // TODO 03: Do we need to transpose up or down any octaves here?
         enableNoteForSwellSwitches(pitch);
       }
       if (StopSwitchStates[GreatToPedal_PIN_16]) // Coupler to combine Great with Pedal
       {
-        // TODO: Do we need to transpose up or down any octaves here?
+        // TODO 04: Do we need to transpose up or down any octaves here?
         enableNoteForGreatSwitches(pitch);
       }
       readMidi(); // Keep input buffer clear. Gotta go fast.
@@ -820,11 +835,11 @@ void enableNoteForGreatSwitches(byte pitch)
   {
     setNoteState(NewStringPipesState, pitch, ON);
   }
-  if (StopSwitchStates[GreatGemsHorn4_PIN_12]) // Great Stop To DONT KNOW YET TODO: Update
+  if (StopSwitchStates[GreatGemsHorn4_PIN_12]) // TODO 05: Great Stop To DONT KNOW YET
   {
     setNoteState(NewPrincipalPipesState, pitch + OCTAVE, ON);
   }
-  if (StopSwitchStates[GreatSalicet4_PIN_11]) // Great Stop To DONT KNOW YET TODO: Update
+  if (StopSwitchStates[GreatSalicet4_PIN_11]) // TODO 06: Great Stop To DONT KNOW YET
   {
     setNoteState(NewStringPipesState, pitch + OCTAVE, ON);
   }
